@@ -126,7 +126,7 @@ make_weights <- function(SE, max_med_ratio = NULL) {
 #'   for each U and V update.
 #' @param ncores Integer, number of cores to use.
 #' @param constraint One of "UV" or "VU". Constraint to use.
-#' @param DAG Bool. True to resitrict solutions to approximate DAGs.
+#' @param DAG Bool. True to restrict solutions to approximate DAGs.
 inspre_worker <- function(X, W = NULL, rho = 1.0, lambda = 0.01,
                           its = 100, delta_target = 1e-4, warm_start = NULL,
                           symmetrize = FALSE, verbose = FALSE, gamma = 0.0,
@@ -264,6 +264,8 @@ inspre_worker <- function(X, W = NULL, rho = 1.0, lambda = 0.01,
     }
   }
   end_time <- Sys.time()
+  # edit from shane to threshold min_nz
+  V <- V * (abs(V)>min_nz)
   return(list(
     "V" = V, "U" = U, "theta" = theta, "L" = L, "F_term" = lagrangian[1],
     "l1_term" = lagrangian[2], "det_term" = lagrangian[3], "rho" = rho,
@@ -379,7 +381,8 @@ fit_inspre_sequence <- function(X, lambda, W = NULL, rho = 1.0,
     test_error[i] <- sqrt(
       mean(off_diagonal(test_W * (X - inspre_res$U))^2, na.rm = TRUE))
   }
-  return(list("V" = V_all, "U" = U_all, "lambda" = lambda, "gamma" = gamma, "rho" = rho_used,
+  # edit from shane to threshold
+  return(list("V" = V_all * (abs(V_all)>min_nz), "U" = U_all, "lambda" = lambda, "gamma" = gamma, "rho" = rho_used,
               "L" = L_path, train_error = train_error, test_error = test_error))
 }
 
@@ -560,10 +563,13 @@ fit_inspre_from_R <- function(R_tce, W = NULL, rho = 100.0, lambda = NULL,
     verbose = verbose, train_prop = train_prop, cv_folds = cv_folds, mu = mu,
     tau = tau, solve_its = solve_its, ncores = ncores, warm_start = warm_start, min_nz = min_nz, constraint = constraint, DAG = DAG)
   inspre_res$R_hat <- array(0L, dim = dim(inspre_res$V))
+  # edits from shane for thresholding 
   for(i in 1:length(inspre_res$lambda)){
     inspre_res$R_hat[ , , i] <-
       diag(D) - inspre_res$V[ , , i] / diag(inspre_res$V[ , , i])
+    inspre_res$R_hat[ , , i] <- inspre_res$R_hat[ , , i] * (abs(inspre_res$R_hat[ , , i]) > min_nz)
   }
+  
   dimnames(inspre_res$R_hat) <- list(rownames(R_tce), colnames(R_tce), inspre_res$lambda)
   return(inspre_res)
 }
@@ -856,7 +862,9 @@ fit_inspre_from_X <- function(X, targets, weighted = TRUE, max_med_ratio = NULL,
   }
 
   # Hack until I have time to change all these variable names.
+  # edit from shane to implement thresholding based on min_nz value
   full_res$G_hat <- full_res$R_hat
+  R_hat <- R_hat * (abs(R_hat)>min_nz)
   full_res$R_hat <- R_hat
   full_res$SE_hat <- SE_hat
   full_res$W <- W
